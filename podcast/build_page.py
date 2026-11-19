@@ -30,7 +30,7 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
 </head>
 <body>
 <h1>🎙️ {title}</h1>
-<p class="meta">每日自动抓取 AI 资讯，由 LLM 撰稿、MiMo TTS 语音合成的单主播播客。共 {count} 期。</p>
+<p class="meta">每日自动抓取 AI 资讯（模型厂商 / Agent与应用 / 硬件与行业 / 模型排行四大栏目），由 LLM 撰写图文日报与口播稿、MiMo TTS 语音合成。共 {count} 期。</p>
 {episodes_html}
 <footer>由 GitHub Actions 每日自动生成 · <a href="feed.xml">RSS 订阅</a></footer>
 </body>
@@ -39,7 +39,7 @@ INDEX_TEMPLATE = """<!DOCTYPE html>
 
 EPISODE_ITEM = """<div class="episode">
 <h2>{title}</h2>
-<p class="meta">{date} · 时长 {duration} · <a href="{file}" download>下载 MP3</a></p>
+<p class="meta">{date} · 时长 {duration} · <a href="{file}" download>下载 MP3</a>{report_link}</p>
 <audio controls preload="none" src="{file}"></audio>
 </div>
 """
@@ -79,11 +79,15 @@ def build_site(site_cfg: dict, podcast_cfg: dict):
 
     items_html = ""
     for ep in episodes:
+        report_link = ""
+        if ep.get("report"):
+            report_link = f' · <a href="{ep["report"]}">📄 图文日报</a>'
         items_html += EPISODE_ITEM.format(
             title=html.escape(ep.get("title", "AI 每日资讯")),
             date=ep["date"],
             duration=ep.get("duration_str", "--:--"),
             file=ep.get("file", ""),
+            report_link=report_link,
         )
 
     (DOCS / "index.html").write_text(
