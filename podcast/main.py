@@ -41,6 +41,16 @@ def main():
         script = json.load(f)
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    # 2.5 保存 Markdown 日报到站点目录
+    rel_report = None
+    report_src = DATA / "report.md"
+    if report_src.exists():
+        rel_report = f"reports/{today}.md"
+        (DOCS / rel_report).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(report_src, DOCS / rel_report)
+        print(f"[main] 日报已保存：{rel_report}")
+
     episodes = load_episodes()
     if any(ep["date"] == today for ep in episodes):
         print(f"[main] {today} 已有节目，本次运行将覆盖更新")
@@ -74,6 +84,7 @@ def main():
         "duration_str": fmt_duration(duration),
         "size": out_path.stat().st_size,
         "segments": len(script["segments"]),
+        "report": rel_report,
     })
     save_episodes(episodes)
 
