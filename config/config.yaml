@@ -10,7 +10,7 @@ podcast:
   duration_max_minutes: 10
   chars_per_minute: 240
   # 音频保留天数：超过该天数的旧音频会在每次运行时自动删除（防止仓库无限膨胀）
-  retention_days: 90
+  retention_days: 7
   # 部署后请改成你的 Pages 地址，例如 https://<你的用户名>.github.io/<仓库名>/
   site_base_url: "https://example.github.io/ai-daily-podcast/"
 
