@@ -11,9 +11,9 @@ podcast:
   site_base_url: "https://example.github.io/ai-daily-podcast/"
 
 script_llm:
-  # 任意 OpenAI 兼容接口均可：DeepSeek 示例如下；OpenAI 改为 https://api.openai.com/v1 + gpt-4o-mini
-  base_url: "https://api.deepseek.com/v1"
-  model: "deepseek-chat"
+  # MiniMax 开放平台，OpenAI 兼容接口；SCRIPT_LLM_API_KEY 填 MiniMax 的 API Key
+  base_url: "https://api.minimax.cn/v1"
+  model: "MiniMax-M3.1-Flash"
   # 口播稿每段的目标长度上限（字符），MiMo TTS 单次上下文 8K token，段落短一些更稳
   segment_max_chars: 400
 
