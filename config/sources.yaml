@@ -1,0 +1,30 @@
+# 资讯源配置：中英文混合
+# lang 字段用于写作提示词区分语言；每源最多抓 15 条，最终由管线挑选 max_items 条
+sources:
+  - name: 机器之心
+    url: https://www.jiqizhixin.com/rss
+    lang: zh
+  - name: 量子位
+    url: https://www.qbitai.com/feed
+    lang: zh
+  - name: 爱范儿
+    url: https://www.ifanr.com/feed
+    lang: zh
+  - name: Hacker News(AI 热点)
+    url: https://hnrss.org/newest?q=AI+OR+LLM+OR+%22large+language+model%22&points=100
+    lang: en
+  - name: TechCrunch AI
+    url: https://techcrunch.com/category/artificial-intelligence/feed/
+    lang: en
+  - name: The Verge AI
+    url: https://www.theverge.com/rss/ai-artificial-intelligence/index.xml
+    lang: en
+  - name: arXiv cs.AI
+    url: http://export.arxiv.org/rss/cs.AI
+    lang: paper
+  - name: arXiv cs.CL
+    url: http://export.arxiv.org/rss/cs.CL
+    lang: paper
+  - name: Reddit r/MachineLearning
+    url: https://www.reddit.com/r/MachineLearning/.rss
+    lang: en
