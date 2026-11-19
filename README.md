@@ -7,17 +7,21 @@
 ## 工作流程
 
 ```
-RSS 抓取（机器之心/量子位/HN/TechCrunch/arXiv/Reddit）
+RSS 抓取（机器之心/量子位/HN/TechCrunch/The Verge/arXiv/Reddit）
         │  48h 内条目，各源轮询选 top 12
         ▼
-LLM 写稿（任意 OpenAI 兼容 API）
-        │  输出 6-10 段口播稿
+LLM 编辑编排（第一次调用）
+        │  分类到四大栏目：模型厂商 / Agent与应用 / 硬件与行业 / 模型排行
+        │  产出 Markdown 图文日报（摘要 + 重点信息 + 原文链接）
+        ▼
+LLM 撰写口播稿（第二次调用）
+        │  字数按 5-10 分钟预算控制（约 1200-2400 字，240 字/分钟）
         ▼
 MiMo TTS 合成（mimo-v2.5-tts，分段调用 + 限流重试）
         │
         ▼
 ffmpeg 拼接 128kbps MP3 → docs/episodes/YYYY-MM-DD.mp3
-        │
+        │  同步生成 docs/reports/YYYY-MM-DD.md 图文日报
         ▼
 更新 docs/episodes.json → 生成 index.html 播放器 + feed.xml 播客 RSS
         │
@@ -40,6 +44,7 @@ commit 回仓库 → 部署 GitHub Pages
 
 - `script_llm.base_url` / `model`：口播稿 LLM，当前为 MiniMax（`https://api.minimax.cn/v1` + `MiniMax-M3.1-Flash`）
 - `podcast.voice`：MiMo 预置音色（冰糖/茉莉/苏打/白桦/Mia/Chloe/Milo/Dean）
+- `podcast.duration_min_minutes` / `duration_max_minutes`：口播时长预算（默认 5-10 分钟，语速按 `chars_per_minute` 240 折算字数）
 - `podcast.site_base_url`：Pages 部署成功后改成实际地址（影响 RSS 中音频链接）
 - `podcast.retention_days`：旧音频保留天数（默认 90，防止仓库无限膨胀）
 
@@ -93,5 +98,6 @@ python -m podcast.main
     ├── index.html                        # 播放器页面
     ├── feed.xml                          # 播客 RSS
     ├── episodes.json                     # 节目元数据
-    └── episodes/                         # 每日 MP3
+    ├── episodes/                         # 每日 MP3
+    └── reports/                          # 每日图文日报（Markdown）
 ```
