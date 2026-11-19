@@ -71,6 +71,15 @@ SCRIPT_PROMPT = """基于以下栏目要点撰写播客口播稿（单主播、�
 4. 结尾固定语："以上就是今天的全部内容，我们明天见。"
 5. 输出 JSON：{{"segments": ["第一段", "第二段", "..."]}}，每段不超过 {seg_max} 字，共 5-9 段"""
 
+EXPAND_PROMPT = """以下是当前播客口播稿，共 {cur_chars} 字，低于目标时长对应的 {min_chars}-{max_chars} 字。
+
+{draft}
+
+请扩写这份稿件：为每条资讯补充背景、数据或影响分析，丰富栏目过渡语，但不得编造资讯中不存在的事实。
+保持开头的欢迎语和结尾固定语"以上就是今天的全部内容，我们明天见。"不变。
+扩写后全文总字数必须达到 {min_chars}-{max_chars} 字。
+输出 JSON：{{"segments": ["第一段", "第二段", "..."]}}，每段不超过 {seg_max} 字。"""
+
 # 关键词兜底分类（LLM 不可用时）
 KEYWORD_RULES = {
     "模型厂商": ["openai", "anthropic", "gemini", "claude", "gpt", "deepseek", "qwen", "通义", "千问",
@@ -224,6 +233,22 @@ def llm_pipeline(cfg, news, api_key):
     segments = [s.strip() for s in script.get("segments") if s and s.strip()]
     if not segments:
         raise ValueError("LLM 口播稿为空")
+
+    # 时长预算控制：不足时先扩写一轮，超出时再裁剪
+    total = sum(len(s) for s in segments)
+    if total < min_chars:
+        try:
+            expanded = parse_json_block(call_llm(
+                script_cfg, api_key, SCRIPT_SYSTEM,
+                EXPAND_PROMPT.format(cur_chars=total, min_chars=min_chars, max_chars=max_chars,
+                                     seg_max=seg_max, draft="\n\n".join(segments)),
+            ))
+            new_segments = [s.strip() for s in expanded.get("segments") if s and s.strip()]
+            if new_segments and sum(len(s) for s in new_segments) > total:
+                segments = new_segments
+                print(f"[script] 稿件不足预算，扩写至 {sum(len(s) for s in segments)} 字")
+        except Exception as exc:
+            print(f"[script] 扩写失败，保持原稿: {exc}")
     segments = enforce_char_budget(segments, max_chars)
 
     return {"title": plan.get("title") or "AI 每日资讯",
