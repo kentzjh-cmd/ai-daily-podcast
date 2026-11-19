@@ -2,8 +2,6 @@
 
 每日自动抓取 AI 资讯（中英文混合源）→ LLM 撰写口播稿 → 小米 MiMo TTS 语音合成 → 生成单主播播客，发布到 GitHub Pages。全程由 GitHub Actions 定时驱动，本地无需开机。
 
-架构参考 [AgentSafety-Papers](https://github.com/NY1024/AgentSafety-Papers) 的"Actions 定时任务 + 仓库自更新 + Pages 展示"模式。
-
 ## 工作流程
 
 ```
