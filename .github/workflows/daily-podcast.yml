@@ -20,10 +20,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
@@ -38,7 +38,7 @@ jobs:
 
       - name: Fetch news, write script, synthesize podcast
         id: build
-        uses: nick-fields/retry@v3
+        uses: nick-fields/retry@v4
         env:
           MIMO_API_KEY: ${{ secrets.MIMO_API_KEY }}
           SCRIPT_LLM_API_KEY: ${{ secrets.SCRIPT_LLM_API_KEY }}
@@ -69,18 +69,18 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: main
 
       - name: Setup Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: docs
 
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
