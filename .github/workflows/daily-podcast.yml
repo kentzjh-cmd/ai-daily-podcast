@@ -1,0 +1,80 @@
+name: Daily AI Podcast
+
+on:
+  schedule:
+    # 每天 UTC 00:00（北京时间 8:00）运行；GitHub 定时任务是尽力调度，可能延迟 15-30 分钟
+    - cron: '0 0 * * *'
+  workflow_dispatch: # 支持手动触发，方便首次测试
+
+# 同一时刻只允许一个更新任务，避免音频文件互相覆盖
+concurrency:
+  group: daily-podcast
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Fetch news, write script, synthesize podcast
+        id: build
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 25
+          max_attempts: 2
+          retry_wait_seconds: 60
+          env:
+            MIMO_API_KEY: ${{ secrets.MIMO_API_KEY }}
+            SCRIPT_LLM_API_KEY: ${{ secrets.SCRIPT_LLM_API_KEY }}
+          command: python -m podcast.main
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --staged --quiet || git commit -m "🎙️ Daily podcast: $(date -u +%Y-%m-%d)"
+          git pull --rebase origin main
+          git push origin main
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
