@@ -40,6 +40,10 @@ def cleanup(retention_days: int) -> int:
             if audio.exists():
                 audio.unlink()
                 print(f"[cleanup] 删除过期音频 {ep['date']}: {ep.get('file')}")
+            report = ROOT / "docs" / (ep.get("report") or "")
+            if ep.get("report") and report.exists():
+                report.unlink()
+                print(f"[cleanup] 删除过期日报 {ep['date']}: {ep.get('report')}")
     if removed:
         save_episodes(kept)
     return len(removed)
