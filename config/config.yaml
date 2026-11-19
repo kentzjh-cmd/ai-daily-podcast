@@ -5,6 +5,10 @@ podcast:
   voice: "suda"
   # 每期最多播报的资讯条数
   max_items: 12
+  # 口播时长预算：语速按 chars_per_minute 折算字数，写稿与兜底流程都会遵守
+  duration_min_minutes: 5
+  duration_max_minutes: 10
+  chars_per_minute: 240
   # 音频保留天数：超过该天数的旧音频会在每次运行时自动删除（防止仓库无限膨胀）
   retention_days: 90
   # 部署后请改成你的 Pages 地址，例如 https://<你的用户名>.github.io/<仓库名>/
