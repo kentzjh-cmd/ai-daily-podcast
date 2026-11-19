@@ -1,11 +1,12 @@
 [
   {
     "date": "2026-11-19",
-    "title": "AI新浪潮",
+    "title": "AI产业今日要闻",
     "file": "episodes/2026-11-19.mp3",
-    "duration_sec": 163,
-    "duration_str": "02:43",
-    "size": 2622764,
-    "segments": 8
+    "duration_sec": 228,
+    "duration_str": "03:48",
+    "size": 3656876,
+    "segments": 7,
+    "report": "reports/2026-11-19.md"
   }
 ]
