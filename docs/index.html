@@ -3,18 +3,29 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI 每日资讯播客</title>
+<title>AI 每日资讯 - 每日 AI 资讯播客</title>
 <style>
   body { font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
          max-width: 720px; margin: 0 auto; padding: 24px 16px;
-         background: #0f172a; color: #e2e8f0; text-align: center; }
-  h1 { font-size: 1.5rem; }
-  p  { color: #94a3b8; }
+         background: #0f172a; color: #e2e8f0; }
+  h1 { font-size: 1.5rem; } .meta { color: #94a3b8; font-size: .85rem; }
+  .episode { background: #1e293b; border-radius: 12px; padding: 16px;
+              margin-bottom: 16px; }
+  .episode h2 { font-size: 1.1rem; margin: 0 0 4px; }
+  audio { width: 100%; margin-top: 10px; }
+  a { color: #38bdf8; text-decoration: none; }
+  footer { text-align: center; color: #64748b; font-size: .8rem; margin-top: 32px; }
 </style>
 </head>
 <body>
-<h1>🎙️ AI 每日资讯播客</h1>
-<p>第一期节目将在下一次定时任务运行后自动生成并出现在这里。</p>
-<p>本页面由 GitHub Actions 自动更新，无需手动维护。</p>
+<h1>🎙️ AI 每日资讯</h1>
+<p class="meta">每日自动抓取 AI 资讯，由 LLM 撰稿、MiMo TTS 语音合成的单主播播客。共 1 期。</p>
+<div class="episode">
+<h2>AI新浪潮</h2>
+<p class="meta">2026-11-19 · 时长 02:43 · <a href="episodes/2026-11-19.mp3" download>下载 MP3</a></p>
+<audio controls preload="none" src="episodes/2026-11-19.mp3"></audio>
+</div>
+
+<footer>由 GitHub Actions 每日自动生成 · <a href="feed.xml">RSS 订阅</a></footer>
 </body>
 </html>

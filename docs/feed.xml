@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+<channel>
+<title>AI 每日资讯</title>
+<link>https://example.github.io/ai-daily-podcast</link>
+<description>每日 AI 资讯播客：自动抓取、LLM 撰稿、MiMo TTS 合成</description>
+<language>zh-cn</language>
+<itunes:author>AI Daily Podcast Bot</itunes:author>
+<item>
+<title>AI新浪潮</title>
+<enclosure url="https://example.github.io/ai-daily-podcast/episodes/2026-11-19.mp3" length="2622764" type="audio/mpeg"/>
+<pubDate>Thu, 19 Nov 2026 00:00:00 GMT</pubDate>
+<guid>https://example.github.io/ai-daily-podcast/episodes/2026-11-19.mp3</guid>
+</item>
+
+</channel>
+</rss>
