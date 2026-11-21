@@ -1,5 +1,15 @@
 [
   {
+    "date": "2026-11-21",
+    "title": "今日AI要闻",
+    "file": "episodes/2026-11-21.mp3",
+    "duration_sec": 368,
+    "duration_str": "06:08",
+    "size": 5894444,
+    "segments": 10,
+    "report": "reports/2026-11-21.md"
+  },
+  {
     "date": "2026-11-20",
     "title": "AI产业最新进展",
     "file": "episodes/2026-11-20.mp3",

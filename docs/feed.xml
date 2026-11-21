@@ -7,6 +7,12 @@
 <language>zh-cn</language>
 <itunes:author>AI Daily Podcast Bot</itunes:author>
 <item>
+<title>今日AI要闻</title>
+<enclosure url="https://example.github.io/ai-daily-podcast/episodes/2026-11-21.mp3" length="5894444" type="audio/mpeg"/>
+<pubDate>Sat, 21 Nov 2026 00:00:00 GMT</pubDate>
+<guid>https://example.github.io/ai-daily-podcast/episodes/2026-11-21.mp3</guid>
+</item>
+<item>
 <title>AI产业最新进展</title>
 <enclosure url="https://example.github.io/ai-daily-podcast/episodes/2026-11-20.mp3" length="4020524" type="audio/mpeg"/>
 <pubDate>Fri, 20 Nov 2026 00:00:00 GMT</pubDate>
