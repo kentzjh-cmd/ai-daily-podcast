@@ -32,10 +32,13 @@ script_llm:
 tts:
   base_url: "https://api.xiaomimimo.com/v1"
   model: "mimo-v2.5-tts"
-  format: "mp3"
+  # 用 wav 合成，拼接时不反复转码，最后统一编码成 128k mp3（社区有声书方案的做法）
+  format: "wav"
   # 音色（也可在 podcast.voice 里指定，这里的值优先）：mimo_default / 冰糖 / 茉莉 / 苏打 / 白桦 / Mia / Chloe / Milo / Dean
   voice: "苏打"
+  # 风格指令：用 user 消息传给 MiMo TTS，控制语气与语速（实测有效）
+  style: "用播客主播的语气自然讲述，语速偏快，节奏紧凑，句间停顿短，不要拖长。"
   # 整体语速倍率（atempo，音调不变）：1.0 原速；1.05~1.12 比较自然，再快就失真
   speed: 1.08
   # 单次 TTS 请求的文本长度上限（超出自动按句子切分）
-  max_chars_per_chunk: 900
+  max_chars_per_chunk: 2000

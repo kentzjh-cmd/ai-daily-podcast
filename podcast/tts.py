@@ -41,6 +41,15 @@ def split_text(text: str, max_chars: int) -> list:
     return chunks or [text.strip()]
 
 
+def build_messages(text: str, style: str) -> list:
+    """MiMo TTS 支持用 user 消息传风格指令（语速/语气），社区客户端普遍这么用"""
+    msgs = []
+    if style:
+        msgs.append({"role": "user", "content": style})
+    msgs.append({"role": "assistant", "content": text})
+    return msgs
+
+
 def call_tts(text: str, tts_cfg: dict, api_key: str) -> bytes:
     """单次 TTS 请求，429/5xx 指数退避重试；音色被拒时自动回退默认音色。
 
@@ -61,9 +70,9 @@ def call_tts(text: str, tts_cfg: dict, api_key: str) -> bytes:
         try:
             body = {
                 "model": tts_cfg.get("model", "mimo-v2.5-tts"),
-                "messages": [{"role": "assistant", "content": text}],
+                "messages": build_messages(text, tts_cfg.get("style", "")),
                 "audio": {
-                    "format": tts_cfg.get("format", "mp3"),
+                    "format": tts_cfg.get("format", "wav"),
                     "voice": voice,
                 },
             }
@@ -89,23 +98,46 @@ def call_tts(text: str, tts_cfg: dict, api_key: str) -> bytes:
     raise RuntimeError(f"TTS 合成失败: {last_err}")
 
 
+def group_utterances(segments: list, kinds: list) -> list:
+    """把「板块过渡句 + 第一条内容」合成一次合成请求。
+
+    过渡句单独成段会多一次请求、多一段静音，听起来一顿一顿；
+    合并后语气连贯，也少一半的请求数。
+    """
+    groups = []
+    i = 0
+    while i < len(segments):
+        kind = kinds[i] if i < len(kinds) else "item"
+        text = segments[i]
+        if kind == "transition" and i + 1 < len(segments):
+            nxt = kinds[i + 1] if i + 1 < len(kinds) else "item"
+            if nxt in ("item", "lead"):
+                groups.append({"text": text + segments[i + 1], "kind": nxt,
+                               "gap": GAP_BY_KIND.get(nxt, 0.12)})
+                i += 2
+                continue
+        groups.append({"text": text, "kind": kind, "gap": GAP_BY_KIND.get(kind, 0.12)})
+        i += 1
+    return groups
+
+
 def synthesize_segments(segments: list, tts_cfg: dict, api_key: str, out_dir: Path,
                        kinds: list | None = None) -> list:
     """合成所有段落，返回按顺序排列的分段信息（含段后停顿）"""
     out_dir.mkdir(parents=True, exist_ok=True)
-    max_chars = tts_cfg.get("max_chars_per_chunk", 900)
+    max_chars = tts_cfg.get("max_chars_per_chunk", 2000)
+    fmt = tts_cfg.get("format", "wav")
     kinds = kinds or ["item"] * len(segments)
+    groups = group_utterances(segments, kinds)
     parts = []
-    for si, seg in enumerate(segments):
-        kind = kinds[si] if si < len(kinds) else "item"
-        gap = GAP_BY_KIND.get(kind, 0.12)
-        for ci, chunk in enumerate(split_text(seg, max_chars)):
+    for gi, g in enumerate(groups):
+        for ci, chunk in enumerate(split_text(g["text"], max_chars)):
             data = call_tts(chunk, tts_cfg, api_key)
-            raw = out_dir / f"seg{si:02d}_{ci:00d}_raw.mp3"
+            raw = out_dir / f"seg{gi:02d}_{ci:00d}_raw.{fmt}"
             raw.write_bytes(data)
-            final = trim_silence(raw, out_dir / f"seg{si:02d}_{ci:00d}.mp3")
+            final = trim_silence(raw, out_dir / f"seg{gi:02d}_{ci:00d}.{fmt}")
             if final != raw:
                 raw.unlink(missing_ok=True)
-            parts.append({"path": final, "gap": gap, "kind": kind})
-            print(f"[tts] 段{si}({kind}) 分片{ci} 完成 ({len(data)} bytes)")
+            parts.append({"path": final, "gap": g["gap"], "kind": g["kind"]})
+            print(f"[tts] 段{gi}({g['kind']}) 分片{ci} 完成 ({len(data)} bytes)")
     return parts
