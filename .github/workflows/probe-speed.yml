@@ -23,12 +23,7 @@ jobs:
               r = subprocess.run(["ffprobe","-v","error","-show_entries","format=duration","-of","default=nw=1:nk=1",path],
                                  capture_output=True, text=True).stdout.strip()
               return float(r) if r else 0.0
-          variants = {
-              "baseline": {"format": "mp3", "voice": "苏打"},
-              "rate_1.2": {"format": "mp3", "voice": "苏打", "speech_rate": 1.2},
-              "rate_1.5": {"format": "mp3", "voice": "苏打", "speech_rate": 1.5},
-              "rate_2.0": {"format": "mp3", "voice": "苏打", "speech_rate": 2.0},
-          }
+          variants = {"baseline": {"format": "mp3", "voice": "苏打"}}
           for name, audio in variants.items():
               body = {"model": "mimo-v2.5-tts", "messages": [{"role": "assistant", "content": text}], "audio": audio}
               r = requests.post(url, headers=headers, json=body, timeout=120)
@@ -41,7 +36,16 @@ jobs:
               subprocess.run(["ffmpeg","-y","-i",raw,"-af",
                               "silenceremove=start_periods=1:start_duration=0.05:start_threshold=-45dB:stop_periods=1:stop_duration=0.05:stop_threshold=-45dB",
                               trimmed], capture_output=True)
-              d_raw, d_trim = dur_of(raw), dur_of(trimmed)
-              print(f"VAR {name}: raw={d_raw:.2f}s trimmed={d_trim:.2f}s padding={d_raw-d_trim:.2f}s "
-                    f"chars={len(text)} speed={len(text)/max(d_trim,0.01):.0f}字/分")
+              d_raw = dur_of(raw)
+              print(f"VAR {name}: raw={d_raw:.2f}s chars={len(text)} rate={len(text)/d_raw:.0f}字/分")
+              sd = subprocess.run(["ffmpeg","-i",raw,"-af","silencedetect=noise=-35dB:d=0.05","-f","null","-"],
+                                  capture_output=True, text=True).stderr
+              sil = [l.split("] ")[1].strip() for l in sd.splitlines() if "silence_" in l]
+              print("   silence_events:", "; ".join(sil[:8]))
+              for th in ["-30dB", "-35dB", "-40dB"]:
+                  out = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False).name
+                  subprocess.run(["ffmpeg","-y","-i",raw,"-af",
+                                  f"silenceremove=start_periods=1:start_duration=0.03:start_threshold={th}:stop_periods=1:stop_duration=0.03:stop_threshold={th}",
+                                  out], capture_output=True)
+                  print(f"   trim@{th}: {dur_of(out):.2f}s (省 {d_raw-dur_of(out):.2f}s)")
           EOF
