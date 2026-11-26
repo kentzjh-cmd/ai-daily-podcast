@@ -1,0 +1,48 @@
+name: Probe TTS speed
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Probe
+        env:
+          MIMO_API_KEY: ${{ secrets.MIMO_API_KEY }}
+        run: |
+          pip install -q requests
+          python3 - <<'EOF'
+          import os, json, requests, subprocess, tempfile
+          url = "https://api.xiaomimimo.com/v1/chat/completions"
+          headers = {"api-key": os.environ["MIMO_API_KEY"], "Content-Type": "application/json"}
+          text = "大家好，欢迎收听今天的 AI 每日资讯。今天我们聊三件事：模型更新、行业动态，还有研究进展。"
+          variants = {
+            "baseline": {"format": "mp3", "voice": "苏打"},
+            "speed_1.2": {"format": "mp3", "voice": "苏打", "speed": 1.2},
+            "speed_1.4": {"format": "mp3", "voice": "苏打", "speed": 1.4},
+            "speech_rate_1.2": {"format": "mp3", "voice": "苏打", "speech_rate": 1.2},
+            "speech_rate_+20%": {"format": "mp3", "voice": "苏打", "speech_rate": "+20%"},
+          }
+          for name, audio in variants.items():
+              body = {"model": "mimo-v2.5-tts",
+                      "messages": [{"role": "assistant", "content": text}],
+                      "audio": audio}
+              try:
+                  r = requests.post(url, headers=headers, json=body, timeout=120)
+                  if r.status_code != 200:
+                      print(f"VAR {name}: HTTP {r.status_code} {r.text[:200]}")
+                      continue
+                  data = r.json()
+                  import base64
+                  b = base64.b64decode(data["choices"][0]["message"]["audio"]["data"])
+                  with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+                      f.write(b); path = f.name
+                  dur = subprocess.run(["ffprobe","-v","error","-show_entries","format=duration","-of","default=nw=1:nk=1",path],
+                                       capture_output=True, text=True).stdout.strip()
+                  extra = {k: v for k, v in data["choices"][0]["message"].items() if k != "audio"}
+                  print(f"VAR {name}: OK bytes={len(b)} duration={dur} extra={json.dumps(extra, ensure_ascii=False)[:200]}")
+              except Exception as e:
+                  print(f"VAR {name}: ERROR {e}")
+          EOF
