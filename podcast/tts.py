@@ -30,21 +30,36 @@ def split_text(text: str, max_chars: int) -> list:
 
 
 def call_tts(text: str, tts_cfg: dict, api_key: str) -> bytes:
-    """单次 TTS 请求，429/5xx 指数退避重试。MiMo 接口：文本放 assistant 消息"""
+    """单次 TTS 请求，429/5xx 指数退避重试；音色被拒时自动回退默认音色。
+
+    MiMo 接口：文本放 assistant 消息。音色 id 写错会返回 400，
+    此时改用 mimo_default 重试，保证不因音色问题整期失败。
+    """
     url = tts_cfg["base_url"].rstrip("/") + "/chat/completions"
     headers = {"api-key": api_key, "Content-Type": "application/json"}
-    body = {
-        "model": tts_cfg.get("model", "mimo-v2.5-tts"),
-        "messages": [{"role": "assistant", "content": text}],
-        "audio": {
-            "format": tts_cfg.get("format", "mp3"),
-            "voice": tts_cfg.get("voice", "mimo_default"),
-        },
-    }
+    voices = [tts_cfg.get("voice", "mimo_default"), "mimo_default"]
+    seen = []
+    for v in voices:
+        if v and v not in seen:
+            seen.append(v)
+
     last_err = None
+    voice = seen[0]
     for attempt in range(5):
         try:
+            body = {
+                "model": tts_cfg.get("model", "mimo-v2.5-tts"),
+                "messages": [{"role": "assistant", "content": text}],
+                "audio": {
+                    "format": tts_cfg.get("format", "mp3"),
+                    "voice": voice,
+                },
+            }
             resp = requests.post(url, headers=headers, json=body, timeout=180)
+            if resp.status_code == 400 and len(seen) > 1:
+                print(f"[tts] 音色 {voice} 被拒（400）: {resp.text[:200]}")
+                voice = seen[1]
+                continue
             if resp.status_code in (429, 503) or resp.status_code >= 500:
                 wait = 5 * (2 ** attempt)
                 print(f"[tts] 限流/服务错误 {resp.status_code}，{wait}s 后重试")

@@ -1,0 +1,30 @@
+name: Probe TTS voices
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe
+        env:
+          MIMO_API_KEY: ${{ secrets.MIMO_API_KEY }}
+        run: |
+          python3 - <<'EOF'
+          import os, requests
+          url = "https://api.xiaomimimo.com/v1/chat/completions"
+          headers = {"api-key": os.environ["MIMO_API_KEY"], "Content-Type": "application/json"}
+          for v in ["soda", "suda", "bingtang", "moli", "baihua", "ice", "mimo_default", "Soda", "ice_bingtang"]:
+              body = {"model": "mimo-v2.5-tts",
+                      "messages": [{"role": "assistant", "content": "你好，这是一次音色探测。"}],
+                      "audio": {"format": "mp3", "voice": v}}
+              try:
+                  r = requests.post(url, headers=headers, json=body, timeout=120)
+                  ok = r.status_code == 200
+                  size = len(r.content)
+                  print(f"VOICE {v}: HTTP {r.status_code} bytes={size} body={r.text[:180] if not ok else 'ok'}")
+              except Exception as e:
+                  print(f"VOICE {v}: ERROR {e}")
+          EOF
