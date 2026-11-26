@@ -77,7 +77,8 @@ ITEM_PROMPT = """把下面这一条 AI 资讯写成一段可直接朗读的中�
 【跨源聚合报道】{digest}
 
 写作要求：
-1. 2-4 句，独立成段；听众只听音频也能明白发生了什么（素材信息量很大时可写到 6 句，普通条目不超过 450 字，头条不超过 700 字）
+1. 3-5 句，独立成段；听众只听音频也能明白发生了什么（普通条目 200-450 字，头条不超过 700 字）
+1b. 句子要完整自然，像人在讲一件事；不要写成关键词清单或一串短句；关键信息（谁、什么时候、做了什么、关键数字）要留住
 2. 第 1 句讲清楚「发生了什么」，后面补充「为什么值得关注 / 会影响谁」
 3. 严格限定在上面的素材内，禁止补充素材中没有的数字、日期、产品名、结论
 4. 口语化，不要「据悉」「综上所述」这类书面语；不要复述标题原文，用自己的话讲
@@ -117,7 +118,8 @@ REVIEW_PROMPT = """下面是一段 AI 播客口播稿，请按风格规则改写
 
 改写要求：
 1. 事实、数字、日期、产品名、结论一个都不能改，只能改说法和句子结构
-2. 把长句拆成短句，每句不超过 25 个字
+2. 把长句拆成短句，每句 15 到 30 个字；但必须保持完整的句子，不能拆成一串只有几个字的短句（那样像念 PPT）
+2b. 不能因为改写而丢掉关键信息：谁做的、什么时候、做了什么、关键数字
 3. 去掉总结句、升华句、对比句式、宣传腔、模糊归因、书面语填充词
 4. 数字改成中文读法，术语按朗读规范表处理
 5. 不要加素材里没有的信息，也不要加评论和感想
@@ -340,14 +342,54 @@ def stage_write_items(cfg, news, picks, api_key, rules, style_text):
 DATE_PATTERN = re.compile(r"\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日|\d{4}-\d{1,2}-\d{1,2}|\d{1,2}\s*月\s*\d{1,2}\s*日")
 
 
+CN_DIGITS = {"零": 0, "〇": 0, "○": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4,
+             "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
+
+
+def cn_to_int(text: str) -> int:
+    """中文数字转阿拉伯数字（支持 一~九十九，如 十一 / 二十六）"""
+    if not text:
+        return 0
+    if "十" not in text:
+        val = 0
+        for ch in text:
+            if ch in CN_DIGITS:
+                val = val * 10 + CN_DIGITS[ch]
+        return val
+    head, _, tail = text.partition("十")
+    tens = CN_DIGITS.get(head, 1) if head else 1
+    ones = CN_DIGITS.get(tail, 0) if tail else 0
+    return tens * 10 + ones
+
+
+CN_DATE_RE = re.compile(
+    r"([零〇○一二三四五六七八九十两]{2,4})年"
+    r"([零〇○一二三四五六七八九十两]{1,3})月"
+    r"([零〇○一二三四五六七八九十两]{1,3})日"
+)
+
+
+def _cn_date_to_digits(text: str) -> str:
+    """把「二零二六年十一月二十六日」这类中文数字日期转成阿拉伯数字，便于比对"""
+
+    def repl(m):
+        y, mo, d = m.group(1), m.group(2), m.group(3)
+        return f"{cn_to_int(y)}年{cn_to_int(mo)}月{cn_to_int(d)}日"
+
+    return CN_DATE_RE.sub(repl, text)
+
+
 def fix_opening_date(opening: str, date_cn: str) -> str:
     """开场白里的日期必须与当天一致（模型偶尔会写错日期）"""
     if not opening or not date_cn:
         return opening
-    if re.sub(r"\s+", "", date_cn) in re.sub(r"\s+", "", opening):
+    target = re.sub(r"\s+", "", date_cn)
+    norm = re.sub(r"\s+", "", _cn_date_to_digits(opening))
+    if target in norm:
         return opening
     fixed = DATE_PATTERN.sub(date_cn, opening)
-    if re.sub(r"\s+", "", date_cn) not in re.sub(r"\s+", "", fixed):
+    norm2 = re.sub(r"\s+", "", _cn_date_to_digits(fixed))
+    if target not in norm2:
         fixed = f"今天是{date_cn}。" + fixed
     print(f"[script] 开场白日期已校正为 {date_cn}")
     return fixed
