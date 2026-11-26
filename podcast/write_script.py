@@ -173,6 +173,50 @@ def format_pronunciation(rules):
     return "\n".join(lines)
 
 
+CN_NUM_CHARS = "零〇○一二三四五六七八九十百千两"   # 数字部分
+CN_BIG_UNITS = "万亿"
+
+
+def normalize_cn_numbers(text: str) -> str:
+    """把「百分之九十五」「两千一百亿」「二零二六年」这类中文数字改成阿拉伯数字。
+
+    只处理带明确量词的组合，避免误伤「一起」「一下」这类词。
+    """
+    t = text
+
+    # 完整中文日期：二零二六年十一月二十六日 → 2026年11月26日
+    def full_date(m):
+        return f"{cn_to_int(m.group(1))}年{cn_to_int(m.group(2))}月{cn_to_int(m.group(3))}日"
+
+    t = CN_DATE_RE.sub(full_date, t)
+
+    # 百分之九十五 → 95%
+    def pct(m):
+        return f"{cn_to_int(m.group(1))}%"
+
+    t = re.sub(r"百分之([" + CN_NUM_CHARS + r"]+)", pct, t)
+
+    # 两千一百亿 → 2100亿
+    def unit_num(m):
+        return f"{cn_to_int(m.group(1))}{m.group(2)}"
+
+    t = re.sub(r"([" + CN_NUM_CHARS + r"]+)([" + CN_BIG_UNITS + r"])", unit_num, t)
+
+    # 二零二六年 → 2026年
+    def year(m):
+        return f"{cn_to_int(m.group(1))}年"
+
+    t = re.sub(r"([零〇○一二三四五六七八九]{4})年", year, t)
+
+    # 一百八十倍 → 180倍；五千四百一十四家 → 5414家（两个以上字才转，避免误伤「一起」「一下」）
+    def counted(m):
+        return f"{cn_to_int(m.group(1))}{m.group(0)[len(m.group(1)):] or ''}"
+
+    t = re.sub(r"([" + CN_NUM_CHARS + r"]{2,})((?:倍|个|家|次|行|颗|条|人|台|美元|元|分钟|小时|天|周))",
+               counted, t)
+    return t
+
+
 def sanitize(text: str, rules) -> str:
     """清理稿件：去链接/括号噪声，并按朗读规范做确定性替换"""
     t = text or ""
@@ -198,6 +242,7 @@ def sanitize(text: str, rules) -> str:
         else:
             t = t.replace(term, rewrite)
     t = re.sub(r"(?<=[\u4e00-\u9fff]) +(?=[\u4e00-\u9fff])", "", t)
+    t = normalize_cn_numbers(t)
     t = t.strip()
     if t and t[-1] not in "。！？!?":
         t += "。"
@@ -315,7 +360,7 @@ def stage_write_items(cfg, news, picks, api_key, rules, style_text):
         text = sanitize(data.get("text") or "", rules)
         if not text:
             raise ValueError(f"条目 {it['id']} 生成内容为空")
-        limit = 700 if pick.get("is_lead") else 450
+        limit = 600 if pick.get("is_lead") else 480
         text = truncate_at_sentence(text, limit)
         return {"id": it["id"], "section": pick.get("section") or it.get("section") or "模型与产品",
                 "is_lead": bool(pick.get("is_lead")),
@@ -347,19 +392,31 @@ CN_DIGITS = {"零": 0, "〇": 0, "○": 0, "一": 1, "二": 2, "两": 2, "三": 
 
 
 def cn_to_int(text: str) -> int:
-    """中文数字转阿拉伯数字（支持 一~九十九，如 十一 / 二十六）"""
+    """中文数字转阿拉伯数字，支持 十/百/千/万/亿（两千一百亿、十一、二十六、二零二六）"""
     if not text:
         return 0
-    if "十" not in text:
+    if not any(u in text for u in "十百千万亿"):
+        # 纯数字串，按位拼接：二零二六 → 2026
         val = 0
         for ch in text:
-            if ch in CN_DIGITS:
-                val = val * 10 + CN_DIGITS[ch]
+            val = val * 10 + CN_DIGITS.get(ch, 0)
         return val
-    head, _, tail = text.partition("十")
-    tens = CN_DIGITS.get(head, 1) if head else 1
-    ones = CN_DIGITS.get(tail, 0) if tail else 0
-    return tens * 10 + ones
+    units = {"十": 10, "百": 100, "千": 1000, "万": 10000, "亿": 100000000}
+    total = 0
+    section = 0
+    number = 0
+    for ch in text:
+        if ch in CN_DIGITS:
+            number = CN_DIGITS[ch]
+        elif ch in units:
+            u = units[ch]
+            if u >= 10000:
+                total += (section + number) * u
+                section = 0
+            else:
+                section += (number if number else 1) * u
+            number = 0
+    return total + section + number
 
 
 CN_DATE_RE = re.compile(
