@@ -2,7 +2,7 @@ podcast:
   title: "AI 每日资讯"
   author: "AI Daily Podcast Bot"
   # MiMo 预置音色：冰糖/茉莉(中文女)、苏打/白桦(中文男)、Mia/Chloe(英文女)、Milo/Dean(英文男)、mimo_default
-  voice: "苏打"
+  voice: "茉莉"
   # 每期条数区间：写稿时由模型在区间内自行判断（8-14 条）
   min_items: 8
   max_items: 14
@@ -35,7 +35,7 @@ tts:
   # 用 wav 合成，拼接时不反复转码，最后统一编码成 128k mp3（社区有声书方案的做法）
   format: "wav"
   # 音色（也可在 podcast.voice 里指定，这里的值优先）：mimo_default / 冰糖 / 茉莉 / 苏打 / 白桦 / Mia / Chloe / Milo / Dean
-  voice: "苏打"
+  voice: "茉莉"
   # 风格指令：用 user 消息传给 MiMo TTS，控制语气与语速（实测有效）
   style: "用播客主播的语气自然讲述，节奏紧凑，句间停顿短，不要播音腔，不要拖长停顿。"
   # 整体语速倍率（atempo，音调不变）：1.0 原速；调小更慢（0.9~0.97），调大更快但容易失真
