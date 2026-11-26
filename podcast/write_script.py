@@ -23,12 +23,12 @@ DATA = ROOT / "data"
 SECTIONS = ["模型与产品", "行业与资本", "研究与实践"]
 
 SECTION_TRANSITION = {
-    "模型与产品": "接下来是模型和产品方面的消息。",
-    "行业与资本": "再来看行业和资本层面的动态。",
-    "研究与实践": "最后说说研究进展和技术实践方面的内容。",
+    "模型与产品": "模型和产品这边，有几条新消息。",
+    "行业与资本": "接着看行业和资本这一块。",
+    "研究与实践": "最后是研究和技术实践的部分。",
 }
 
-LEAD_TRANSITION = "先说今天最值得关注的几件事。"
+LEAD_TRANSITION = "先说今天最值得关注的。"
 CLOSING = "以上就是今天的全部内容，我们明天见。"
 ATTRIBUTION = "资讯整理自AIhot社区"
 
@@ -87,6 +87,9 @@ ITEM_PROMPT = """把下面这一条 AI 资讯写成一段可直接朗读的中�
 8. 英文术语一律直接用中文说法（智能体、显卡、基准测试、混合专家架构…），不要保留英文缩写，也不要加括号注释
 9. 公司名、产品名保留英文原名（Anthropic、OpenAI、Google、Meta、xAI、Character.AI、Fireworks、Claude、GPT 等），不要音译、也不要意译
 
+【风格规则】（必须遵守，这是去 AI 味的关键）
+{style}
+
 【朗读规范表】
 {pronunciation}
 
@@ -99,6 +102,31 @@ OPENING_HINT = ""
 
 # ---------------------------------------------------------------- 工具
 
+REVIEW_SYSTEM = (
+    "你是一位中文播客文字编辑，擅长把机器写出来的稿子改成真人说话的样子。"
+    "只输出 JSON，不解释。"
+)
+
+REVIEW_PROMPT = """下面是一段 AI 播客口播稿，请按风格规则改写得更像人在说话。
+
+【原文】
+{text}
+
+【风格规则】（逐条对照）
+{style}
+
+改写要求：
+1. 事实、数字、日期、产品名、结论一个都不能改，只能改说法和句子结构
+2. 把长句拆成短句，每句不超过 25 个字
+3. 去掉总结句、升华句、对比句式、宣传腔、模糊归因、书面语填充词
+4. 数字改成中文读法，术语按朗读规范表处理
+5. 不要加素材里没有的信息，也不要加评论和感想
+6. 改写后整体长度不超过原文的 1.2 倍
+7. 如果原文已经符合规则，就原样返回
+
+输出 JSON：{{"text":"改写后的口播稿"}}"""
+
+
 def load_config():
     with open(ROOT / "config" / "config.yaml", encoding="utf-8") as f:
         return yaml.safe_load(f)
@@ -110,6 +138,20 @@ def load_pronunciation():
         return []
     with open(path, encoding="utf-8") as f:
         return (yaml.safe_load(f) or {}).get("rules") or []
+
+
+def load_style_rules():
+    path = ROOT / "config" / "style.yaml"
+    if not path.exists():
+        return []
+    with open(path, encoding="utf-8") as f:
+        return (yaml.safe_load(f) or {}).get("rules") or []
+
+
+def format_style(rules):
+    if not rules:
+        return "（无额外规则）"
+    return "\n".join(f"{i}. {r}" for i, r in enumerate(rules, 1))
 
 
 def format_pronunciation(rules):
@@ -245,7 +287,7 @@ def stage_select(cfg, news, api_key, date_cn: str):
     return plan
 
 
-def stage_write_items(cfg, news, picks, api_key, rules):
+def stage_write_items(cfg, news, picks, api_key, rules, style_text):
     """逐条并发生成独立口播内容"""
     index = {}
     for it in (news.get("leads") or []) + (news.get("items") or []):
@@ -264,6 +306,7 @@ def stage_write_items(cfg, news, picks, api_key, rules):
             reason=it.get("reason") or "（无）",
             digest=it.get("digest") or "（无）",
             pronunciation=pronunciation,
+            style=style_text,
         )
         data = parse_json_block(call_llm(cfg["script_llm"], api_key, ITEM_SYSTEM, prompt,
                                         temperature=0.7))
@@ -325,32 +368,70 @@ def truncate_at_sentence(text: str, limit: int) -> str:
     return head
 
 
+def stage_review(cfg, results, api_key, rules, style_text):
+    """逐段风格复核：把机器味重写成口语（只改说法，不改事实）"""
+    workers = int(cfg["podcast"].get("llm_workers", 4))
+    changed = 0
+
+    def _review(item):
+        prompt = REVIEW_PROMPT.format(text=item["text"], style=style_text)
+        data = parse_json_block(call_llm(cfg["script_llm"], api_key, REVIEW_SYSTEM, prompt,
+                                        temperature=0.5))
+        new_text = sanitize(data.get("text") or "", rules)
+        if not new_text or len(new_text) > len(item["text"]) * 1.25:
+            return item
+        return {**item, "text": new_text}
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(_review, r): r for r in results}
+        for fut in futures:
+            item = futures[fut]
+            try:
+                new_item = fut.result()
+            except Exception as exc:  # noqa: BLE001
+                print(f"[script] 风格复核失败，保留原文: {exc}")
+                continue
+            if new_item["text"] != item["text"]:
+                changed += 1
+                item["text"] = new_item["text"]
+    print(f"[script] 风格复核：{changed}/{len(results)} 段被改写")
+    return results
+
+
 def stage_assemble(plan, results, date_cn: str = ""):
     """按板块组装成最终分段口播稿"""
     segments = []
+    kinds = []
     opening = sanitize(plan.get("opening") or "", [])
     opening = fix_opening_date(opening, date_cn)
     if opening:
         segments.append(opening)
+        kinds.append("opening")
 
     leads = [r for r in results if r.get("is_lead")]
     others = [r for r in results if not r.get("is_lead")]
     if leads:
         segments.append(LEAD_TRANSITION)
+        kinds.append("transition")
         for r in leads:
             segments.append(r["text"])
+            kinds.append("lead")
 
     for section in SECTIONS:
         group = [r for r in others if r.get("section") == section]
         if not group:
             continue
         segments.append(SECTION_TRANSITION[section])
+        kinds.append("transition")
         for r in group:
             segments.append(r["text"])
+            kinds.append("item")
 
     segments.append(CLOSING)
+    kinds.append("closing")
     segments.append(ATTRIBUTION)
-    return segments
+    kinds.append("attribution")
+    return segments, kinds
 
 
 # ---------------------------------------------------------------- 入口
@@ -371,13 +452,20 @@ def main(skip_llm=False):
         raise RuntimeError("已按要求移除兜底策略，无法跳过 LLM")
 
     rules = load_pronunciation()
+    style_text = format_style(load_style_rules())
     # 播客按北京时间口径出稿（Action 在北京时间 8:00 跑）
     now_cn = datetime.now(timezone(timedelta(hours=8)))
     today_cn = f"{now_cn.year}年{now_cn.month}月{now_cn.day}日"
     plan = stage_select(cfg, news, api_key, today_cn)
     picks = plan.get("picks") or []
-    results = stage_write_items(cfg, news, picks, api_key, rules)
-    segments = stage_assemble(plan, results, today_cn)
+    results = stage_write_items(cfg, news, picks, api_key, rules, style_text)
+    if cfg["podcast"].get("style_review", True):
+        results = stage_review(cfg, results, api_key, rules, style_text)
+        if plan.get("opening"):
+            reviewed = stage_review(cfg, [{"id": "opening", "text": plan["opening"]}],
+                                    api_key, rules, style_text)
+            plan["opening"] = reviewed[0]["text"]
+    segments, kinds = stage_assemble(plan, results, today_cn)
 
     n_chars = sum(len(s) for s in segments)
     print(f"[script] 口播稿完成：{len(segments)} 段，{n_chars} 字")
@@ -385,6 +473,7 @@ def main(skip_llm=False):
     with open(DATA / "script.json", "w", encoding="utf-8") as f:
         json.dump({"title": plan.get("title") or "AI 每日资讯",
                    "segments": segments,
+                   "kinds": kinds,
                    "picks": [{"id": r["id"], "section": r["section"], "is_lead": r["is_lead"]}
                              for r in results]},
                   f, ensure_ascii=False, indent=2)

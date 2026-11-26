@@ -1,10 +1,22 @@
-"""MiMo TTS 客户端：分段调用小米 MiMo 开放平台语音合成 API，带限流重试"""
+"""MiMo TTS 客户端：分段调用小米 MiMo 开放平台语音合成 API，带限流重试与静音裁剪"""
 import base64
 import re
 import time
 from pathlib import Path
 
 import requests
+
+from podcast.audio import trim_silence
+
+# 不同段落之间的停顿（秒）
+GAP_BY_KIND = {
+    "opening": 0.25,
+    "transition": 0.40,
+    "lead": 0.16,
+    "item": 0.12,
+    "closing": 0.20,
+    "attribution": 0.0,
+}
 
 
 def split_text(text: str, max_chars: int) -> list:
@@ -77,16 +89,23 @@ def call_tts(text: str, tts_cfg: dict, api_key: str) -> bytes:
     raise RuntimeError(f"TTS 合成失败: {last_err}")
 
 
-def synthesize_segments(segments: list, tts_cfg: dict, api_key: str, out_dir: Path) -> list:
-    """合成所有段落，返回按顺序排列的分段 mp3 路径"""
+def synthesize_segments(segments: list, tts_cfg: dict, api_key: str, out_dir: Path,
+                       kinds: list | None = None) -> list:
+    """合成所有段落，返回按顺序排列的分段信息（含段后停顿）"""
     out_dir.mkdir(parents=True, exist_ok=True)
     max_chars = tts_cfg.get("max_chars_per_chunk", 900)
-    paths = []
+    kinds = kinds or ["item"] * len(segments)
+    parts = []
     for si, seg in enumerate(segments):
+        kind = kinds[si] if si < len(kinds) else "item"
+        gap = GAP_BY_KIND.get(kind, 0.12)
         for ci, chunk in enumerate(split_text(seg, max_chars)):
             data = call_tts(chunk, tts_cfg, api_key)
-            p = out_dir / f"seg{si:02d}_{ci:02d}.mp3"
-            p.write_bytes(data)
-            paths.append(p)
-            print(f"[tts] 段{si} 分片{ci} 完成 ({len(data)} bytes)")
-    return paths
+            raw = out_dir / f"seg{si:02d}_{ci:00d}_raw.mp3"
+            raw.write_bytes(data)
+            final = trim_silence(raw, out_dir / f"seg{si:02d}_{ci:00d}.mp3")
+            if final != raw:
+                raw.unlink(missing_ok=True)
+            parts.append({"path": final, "gap": gap, "kind": kind})
+            print(f"[tts] 段{si}({kind}) 分片{ci} 完成 ({len(data)} bytes)")
+    return parts

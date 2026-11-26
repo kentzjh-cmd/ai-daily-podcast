@@ -8,6 +8,8 @@ podcast:
   max_items: 14
   # 写稿 LLM 并发数（逐条独立生成口播内容）
   llm_workers: 4
+  # 是否做逐段风格复核（去 AI 味），会额外调用一轮 LLM
+  style_review: true
 
 aihot:
   # AIHOT 公开 API（https://aihot.news）：已由 LLM 筛选/打分/聚簇并生成中文摘要，无需 API Key
@@ -33,5 +35,7 @@ tts:
   format: "mp3"
   # 音色（也可在 podcast.voice 里指定，这里的值优先）：mimo_default / 冰糖 / 茉莉 / 苏打 / 白桦 / Mia / Chloe / Milo / Dean
   voice: "苏打"
+  # 整体语速倍率（atempo，音调不变）：1.0 原速；1.05~1.12 比较自然，再快就失真
+  speed: 1.08
   # 单次 TTS 请求的文本长度上限（超出自动按句子切分）
   max_chars_per_chunk: 900

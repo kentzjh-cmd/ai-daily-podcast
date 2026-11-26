@@ -1,4 +1,4 @@
-name: Probe TTS speed
+name: Probe TTS style
 
 on:
   workflow_dispatch:
@@ -15,37 +15,30 @@ jobs:
           sudo apt-get update -q && sudo apt-get install -y -q ffmpeg
           pip install -q requests
           python3 - <<'EOF'
-          import os, json, base64, requests, subprocess, tempfile
+          import os, base64, requests, subprocess, tempfile
           url = "https://api.xiaomimimo.com/v1/chat/completions"
           headers = {"api-key": os.environ["MIMO_API_KEY"], "Content-Type": "application/json"}
           text = "大家好，欢迎收听今天的 AI 每日资讯。今天我们聊三件事：模型更新、行业动态，还有研究进展。"
-          def dur_of(path):
-              r = subprocess.run(["ffprobe","-v","error","-show_entries","format=duration","-of","default=nw=1:nk=1",path],
+          def dur_of(p):
+              r = subprocess.run(["ffprobe","-v","error","-show_entries","format=duration","-of","default=nw=1:nk=1",p],
                                  capture_output=True, text=True).stdout.strip()
               return float(r) if r else 0.0
-          variants = {"baseline": {"format": "mp3", "voice": "苏打"}}
-          for name, audio in variants.items():
-              body = {"model": "mimo-v2.5-tts", "messages": [{"role": "assistant", "content": text}], "audio": audio}
+          cases = {
+            "A_plain_mp3": (None, "mp3"),
+            "B_style_fast_mp3": ("语速稍快一点，语气自然随意，像平时聊天，不要播音腔。", "mp3"),
+            "C_style_news_mp3": ("用播客主播的语气播报，语速偏快，节奏紧凑。", "mp3"),
+            "D_style_fast_wav": ("语速稍快一点，语气自然随意，像平时聊天，不要播音腔。", "wav"),
+            "E_style_slowcheck": ("语速放慢一些。", "mp3"),
+          }
+          for name,(style,fmt) in cases.items():
+              msgs = ([{"role":"user","content":style}] if style else []) + [{"role":"assistant","content":text}]
+              body = {"model":"mimo-v2.5-tts","messages":msgs,"audio":{"format":fmt,"voice":"苏打"}}
               r = requests.post(url, headers=headers, json=body, timeout=120)
               if r.status_code != 200:
-                  print(f"VAR {name}: HTTP {r.status_code} {r.text[:160]}"); continue
+                  print(f"CASE {name}: HTTP {r.status_code} {r.text[:160]}"); continue
               b = base64.b64decode(r.json()["choices"][0]["message"]["audio"]["data"])
-              raw = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False).name
-              open(raw, "wb").write(b)
-              trimmed = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False).name
-              subprocess.run(["ffmpeg","-y","-i",raw,"-af",
-                              "silenceremove=start_periods=1:start_duration=0.05:start_threshold=-45dB:stop_periods=1:stop_duration=0.05:stop_threshold=-45dB",
-                              trimmed], capture_output=True)
-              d_raw = dur_of(raw)
-              print(f"VAR {name}: raw={d_raw:.2f}s chars={len(text)} rate={len(text)/d_raw:.0f}字/分")
-              sd = subprocess.run(["ffmpeg","-i",raw,"-af","silencedetect=noise=-35dB:d=0.05","-f","null","-"],
-                                  capture_output=True, text=True).stderr
-              sil = [l.split("] ")[1].strip() for l in sd.splitlines() if "silence_" in l]
-              print("   silence_events:", "; ".join(sil[:8]))
-              for th in ["-30dB", "-35dB", "-40dB"]:
-                  out = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False).name
-                  subprocess.run(["ffmpeg","-y","-i",raw,"-af",
-                                  f"silenceremove=start_periods=1:start_duration=0.03:start_threshold={th}:stop_periods=1:stop_duration=0.03:stop_threshold={th}",
-                                  out], capture_output=True)
-                  print(f"   trim@{th}: {dur_of(out):.2f}s (省 {d_raw-dur_of(out):.2f}s)")
+              p = tempfile.NamedTemporaryFile(suffix="."+fmt, delete=False).name
+              open(p,"wb").write(b)
+              d = dur_of(p)
+              print(f"CASE {name}: dur={d:.2f}s chars={len(text)} rate={len(text)/d:.1f}字/分 bytes={len(b)}")
           EOF

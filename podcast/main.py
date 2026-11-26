@@ -51,12 +51,14 @@ def main():
     tts_cfg = dict(cfg["tts"])
     tts_cfg.setdefault("voice", podcast_cfg.get("voice", "mimo_default"))
     seg_dir = DATA / "segments"
-    parts = synthesize_segments(script["segments"], tts_cfg, api_key, seg_dir)
+    parts = synthesize_segments(script["segments"], tts_cfg, api_key, seg_dir,
+                                kinds=script.get("kinds"))
 
     # 4. 拼接成完整播客（音频制品）
     EPISODES.mkdir(parents=True, exist_ok=True)
     out_path = EPISODES / f"{today}.mp3"
-    merge_mp3(parts, out_path, workdir=DATA)
+    speed = float(cfg.get("tts", {}).get("speed", 1.0) or 1.0)
+    merge_mp3(parts, out_path, workdir=DATA, speed=speed)
     duration = get_duration_sec(out_path)
     print(f"[main] 播客合成完成：{out_path}，时长 {fmt_duration(duration)}")
 
