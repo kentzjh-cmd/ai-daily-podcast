@@ -12,6 +12,7 @@ jobs:
         env:
           MIMO_API_KEY: ${{ secrets.MIMO_API_KEY }}
         run: |
+          sudo apt-get update -q && sudo apt-get install -y -q ffmpeg
           pip install -q requests
           python3 - <<'EOF'
           import os, json, requests, subprocess, tempfile
@@ -41,6 +42,8 @@ jobs:
                       f.write(b); path = f.name
                   dur = subprocess.run(["ffprobe","-v","error","-show_entries","format=duration","-of","default=nw=1:nk=1",path],
                                        capture_output=True, text=True).stdout.strip()
+                  if not dur:
+                      dur = f"~{len(b)/16000:.2f}s(by-size)"
                   extra = {k: v for k, v in data["choices"][0]["message"].items() if k != "audio"}
                   print(f"VAR {name}: OK bytes={len(b)} duration={dur} extra={json.dumps(extra, ensure_ascii=False)[:200]}")
               except Exception as e:
