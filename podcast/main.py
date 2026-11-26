@@ -8,7 +8,7 @@ import json
 import os
 import shutil
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import yaml
@@ -37,7 +37,8 @@ def main():
     with open(DATA / "script.json", encoding="utf-8") as f:
         script = json.load(f)
 
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    now_cn = datetime.now(timezone(timedelta(hours=8)))
+    today = f"{now_cn.year}-{now_cn.month:02d}-{now_cn.day:02d}"
 
     if skip_tts:
         print("[main] --no-tts 模式：跳过 TTS 与音频合成")

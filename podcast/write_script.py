@@ -11,7 +11,7 @@ import json
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
@@ -55,9 +55,10 @@ SELECT_PROMPT = """下面是过去 24 小时 AI 圈的要闻素材，来自 AIHO
 
 另外写：
 - title：本期标题，12 字以内，不要用书名号
-- opening：开场白，2 句。第一句问候并点明日期，第二句概括今天 AI 圈整体在关注什么（不要逐条罗列）
+- opening：开场白，2 句。第一句问候并写明今天是 {date}（用这个日期，不要自己换算），第二句概括今天 AI 圈整体在关注什么（不要逐条罗列）
 
 硬性要求：只使用素材中的事实，不得杜撰数字、日期、产品名或结论；素材信息不足就少选几条。
+公司名、产品名保留英文原名（Anthropic、OpenAI、Google、Meta、xAI、Character.AI、Fireworks 等），不要音译也不要意译成“人工智能企业”之类的说法。
 
 输出 JSON：
 {{"title":"...","opening":"...","picks":[{{"id":"...","section":"模型与产品","is_lead":true}}]}}"""
@@ -76,7 +77,7 @@ ITEM_PROMPT = """把下面这一条 AI 资讯写成一段可直接朗读的中�
 【跨源聚合报道】{digest}
 
 写作要求：
-1. 2-4 句，独立成段；听众只听音频也能明白发生了什么
+1. 2-4 句，独立成段；听众只听音频也能明白发生了什么（素材信息量很大时可写到 6 句，普通条目不超过 450 字，头条不超过 700 字）
 2. 第 1 句讲清楚「发生了什么」，后面补充「为什么值得关注 / 会影响谁」
 3. 严格限定在上面的素材内，禁止补充素材中没有的数字、日期、产品名、结论
 4. 口语化，不要「据悉」「综上所述」这类书面语；不要复述标题原文，用自己的话讲
@@ -84,6 +85,7 @@ ITEM_PROMPT = """把下面这一条 AI 资讯写成一段可直接朗读的中�
 6. 素材只有标题没有要点时，就只讲标题里明确写出的信息，不要展开想象
 7. 朗读规范（必须遵守，见下表）：凡出现表中的词，必须改用「替代写法」再输出；表里没有注明的多音字，请在句子中换成没有歧义的表达
 8. 英文术语一律直接用中文说法（智能体、显卡、基准测试、混合专家架构…），不要保留英文缩写，也不要加括号注释
+9. 公司名、产品名保留英文原名（Anthropic、OpenAI、Google、Meta、xAI、Character.AI、Fireworks、Claude、GPT 等），不要音译、也不要意译
 
 【朗读规范表】
 {pronunciation}
@@ -143,7 +145,13 @@ def sanitize(text: str, rules) -> str:
     for r in rules:
         term = r.get("term") or ""
         rewrite = r.get("rewrite") or ""
-        if term and rewrite and rewrite != term and term in t:
+        if not term or not rewrite or rewrite == term:
+            continue
+        if re.fullmatch(r"[A-Za-z0-9 ._\-]+", term):
+            # 英文术语按词边界替换，避免 MAGI-2 被 AGI 规则误伤
+            pat = re.compile(r"(?<![A-Za-z0-9])" + re.escape(term) + r"(?![A-Za-z0-9])")
+            t = pat.sub(rewrite, t)
+        else:
             t = t.replace(term, rewrite)
     t = re.sub(r"(?<=[\u4e00-\u9fff]) +(?=[\u4e00-\u9fff])", "", t)
     t = t.strip()
@@ -220,12 +228,12 @@ def render_leads_for_prompt(leads):
 
 # ---------------------------------------------------------------- 阶段
 
-def stage_select(cfg, news, api_key):
+def stage_select(cfg, news, api_key, date_cn: str):
     podcast_cfg = cfg["podcast"]
     min_items = podcast_cfg.get("min_items", 8)
     max_items = podcast_cfg.get("max_items", 14)
     prompt = SELECT_PROMPT.format(
-        min_items=min_items, max_items=max_items,
+        min_items=min_items, max_items=max_items, date=date_cn,
         leads=render_leads_for_prompt(news.get("leads") or []),
         items=render_items_for_prompt(news.get("items") or []),
     )
@@ -262,8 +270,8 @@ def stage_write_items(cfg, news, picks, api_key, rules):
         text = sanitize(data.get("text") or "", rules)
         if not text:
             raise ValueError(f"条目 {it['id']} 生成内容为空")
-        if len(text) > 400:
-            text = text[:400].rstrip("，。、 ") + "。"
+        limit = 700 if pick.get("is_lead") else 450
+        text = truncate_at_sentence(text, limit)
         return {"id": it["id"], "section": pick.get("section") or it.get("section") or "模型与产品",
                 "is_lead": bool(pick.get("is_lead")),
                 "title": it.get("title", ""), "text": text}
@@ -286,10 +294,42 @@ def stage_write_items(cfg, news, picks, api_key, rules):
     return results
 
 
-def stage_assemble(plan, results):
+DATE_PATTERN = re.compile(r"\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日|\d{4}-\d{1,2}-\d{1,2}|\d{1,2}\s*月\s*\d{1,2}\s*日")
+
+
+def fix_opening_date(opening: str, date_cn: str) -> str:
+    """开场白里的日期必须与当天一致（模型偶尔会写错日期）"""
+    if not opening or not date_cn:
+        return opening
+    if re.sub(r"\s+", "", date_cn) in re.sub(r"\s+", "", opening):
+        return opening
+    fixed = DATE_PATTERN.sub(date_cn, opening)
+    if re.sub(r"\s+", "", date_cn) not in re.sub(r"\s+", "", fixed):
+        fixed = f"今天是{date_cn}。" + fixed
+    print(f"[script] 开场白日期已校正为 {date_cn}")
+    return fixed
+
+
+def truncate_at_sentence(text: str, limit: int) -> str:
+    """超长时在最后一个句号处截断（不截半句），并补上句号"""
+    if len(text) <= limit:
+        return text
+    head = text[:limit]
+    cut = max(head.rfind("。"), head.rfind("！"), head.rfind("？"), head.rfind("."))
+    if cut > limit * 0.4:
+        head = head[:cut + 1]
+    else:
+        head = head.rstrip("，。、 ")
+    if head and head[-1] not in "。！？!?":
+        head += "。"
+    return head
+
+
+def stage_assemble(plan, results, date_cn: str = ""):
     """按板块组装成最终分段口播稿"""
     segments = []
     opening = sanitize(plan.get("opening") or "", [])
+    opening = fix_opening_date(opening, date_cn)
     if opening:
         segments.append(opening)
 
@@ -331,10 +371,13 @@ def main(skip_llm=False):
         raise RuntimeError("已按要求移除兜底策略，无法跳过 LLM")
 
     rules = load_pronunciation()
-    plan = stage_select(cfg, news, api_key)
+    # 播客按北京时间口径出稿（Action 在北京时间 8:00 跑）
+    now_cn = datetime.now(timezone(timedelta(hours=8)))
+    today_cn = f"{now_cn.year}年{now_cn.month}月{now_cn.day}日"
+    plan = stage_select(cfg, news, api_key, today_cn)
     picks = plan.get("picks") or []
     results = stage_write_items(cfg, news, picks, api_key, rules)
-    segments = stage_assemble(plan, results)
+    segments = stage_assemble(plan, results, today_cn)
 
     n_chars = sum(len(s) for s in segments)
     print(f"[script] 口播稿完成：{len(segments)} 段，{n_chars} 字")
