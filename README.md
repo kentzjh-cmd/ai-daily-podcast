@@ -89,6 +89,7 @@ python -m podcast.main
 - **定时任务休眠**：GitHub 仓库 60 天没有任何活动会自动停用 scheduled workflow；本项目每天都会产生一次运行，可偶尔手动触发一次以保活
 - **产物获取**：不部署 Pages，音频只能从 Actions artifact 下载（单文件 100MB 限制不涉及）
 - **TTS 限流**：MiMo 平台 RPM 100，本项目已内置 429 指数退避重试
+- **数字处理**：写稿提示词要求数字用阿拉伯数字，落盘前再做一次确定性归一化（百分之九十五→95%、两千一百万→2100万、一百八十倍→180倍），避免 TTS 念中文数字
 - **音频处理**：TTS 用 wav 无损合成，拼接前裁掉每段自带的首尾静音，段间停顿固定 0.12~0.4s；「板块过渡句 + 首条内容」合并成一次合成请求，避免一顿一顿
 - **参考的社区实现**：MiMo TTS 的风格指令与 wav 拼接方案参考了开源客户端 [dqsq2e2/mimo-tts](https://github.com/dqsq2e2/mimo-tts)（有声书工具）、[bmbxwbh/mimo-tts-web](https://github.com/bmbxwbh/mimo-tts-web)；去 AI 味的风格规则参考 [deslop-zh](https://github.com/ninehills/public-skills/blob/main/deslop-zh/SKILL.md)
 - **不保留模板兜底**：LLM 写稿失败会直接报错终止（单条失败重试 3 次，仍失败则跳过该条；有效内容不足 3 条直接放弃），由 GitHub Actions 的重试步骤兜住
