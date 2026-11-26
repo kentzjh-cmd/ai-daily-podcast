@@ -2,7 +2,7 @@ podcast:
   title: "AI 每日资讯"
   author: "AI Daily Podcast Bot"
   # MiMo 预置音色：冰糖/茉莉(中文女)、苏打/白桦(中文男)、Mia/Chloe(英文女)、Milo/Dean(英文男)、mimo_default
-  voice: "suda"
+  voice: "苏打"
   # 每期条数区间：写稿时由模型在区间内自行判断（8-14 条）
   min_items: 8
   max_items: 14
@@ -31,7 +31,7 @@ tts:
   base_url: "https://api.xiaomimimo.com/v1"
   model: "mimo-v2.5-tts"
   format: "mp3"
-  # 音色（也可在 podcast.voice 里指定，这里的值优先）
-  voice: "suda"
+  # 音色（也可在 podcast.voice 里指定，这里的值优先）：mimo_default / 冰糖 / 茉莉 / 苏打 / 白桦 / Mia / Chloe / Milo / Dean
+  voice: "苏打"
   # 单次 TTS 请求的文本长度上限（超出自动按句子切分）
   max_chars_per_chunk: 900
