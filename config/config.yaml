@@ -3,16 +3,22 @@ podcast:
   author: "AI Daily Podcast Bot"
   # MiMo 预置音色：冰糖/茉莉(中文女)、苏打/白桦(中文男)、Mia/Chloe(英文女)、Milo/Dean(英文男)、mimo_default
   voice: "suda"
-  # 每期最多播报的资讯条数
-  max_items: 12
-  # 口播时长预算：语速按 chars_per_minute 折算字数，写稿与兜底流程都会遵守
-  duration_min_minutes: 5
-  duration_max_minutes: 10
-  chars_per_minute: 240
-  # 音频保留天数：超过该天数的旧音频会在每次运行时自动删除（防止仓库无限膨胀）
-  retention_days: 7
-  # 部署后请改成你的 Pages 地址，例如 https://<你的用户名>.github.io/<仓库名>/
-  site_base_url: "https://example.github.io/ai-daily-podcast/"
+  # 每期条数区间：写稿时由模型在区间内自行判断（8-14 条）
+  min_items: 8
+  max_items: 14
+  # 写稿 LLM 并发数（逐条独立生成口播内容）
+  llm_workers: 4
+
+aihot:
+  # AIHOT 公开 API（https://aihot.news）：已由 LLM 筛选/打分/聚簇并生成中文摘要，无需 API Key
+  enabled: true
+  base_url: "https://aihot.news"
+  # window 可选 24h / 7d（本期用 24h）
+  window: "24h"
+  limit: 60
+  lang: "zh"
+  # 站点会校验 User-Agent，缺失时返回 403
+  user_agent: "ai-daily-podcast/1.0 (podcast bot; +https://aihot.news)"
 
 script_llm:
   # MiniMax 开放平台，OpenAI 兼容接口；SCRIPT_LLM_API_KEY 填 MiniMax 的 API Key
@@ -25,5 +31,7 @@ tts:
   base_url: "https://api.xiaomimimo.com/v1"
   model: "mimo-v2.5-tts"
   format: "mp3"
+  # 音色（也可在 podcast.voice 里指定，这里的值优先）
+  voice: "suda"
   # 单次 TTS 请求的文本长度上限（超出自动按句子切分）
   max_chars_per_chunk: 900

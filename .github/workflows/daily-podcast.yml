@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
-      contents: write
+      contents: read
 
     steps:
       - name: Checkout
@@ -48,39 +48,20 @@ jobs:
           retry_wait_seconds: 60
           command: python -m podcast.main
 
-      - name: Commit and push
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git diff --staged --quiet || git commit -m "🎙️ Daily podcast: $(date -u +%Y-%m-%d)"
-          git pull --rebase origin main
-          git push origin main
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
+      - name: Upload audio artifact
+        uses: actions/upload-artifact@v4
         with:
-          ref: main
+          name: ai-daily-podcast-${{ github.run_number }}
+          path: data/episodes/*.mp3
+          retention-days: 30
+          if-no-files-found: error
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v6
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v5
+      - name: Upload script artifact
+        uses: actions/upload-artifact@v4
         with:
-          path: docs
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v5
+          name: ai-daily-podcast-script-${{ github.run_number }}
+          path: |
+            data/script.json
+            data/picks.json
+          retention-days: 30
+          if-no-files-found: warn

@@ -1,8 +1,5 @@
-# 中间产物不入库
+# 中间产物不入库（音频制品由 GitHub Actions 作为 artifact 上传）
 data/
 __pycache__/
 *.pyc
 .env
-
-# Pages 站点中，index.html / feed.xml / episodes.json 由管线生成，但需要入库（与 AgentSafety-Papers 一致）
-# docs/episodes/*.mp3 是播客音频，需要入库，不要忽略

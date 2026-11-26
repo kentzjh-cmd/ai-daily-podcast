@@ -1,11 +1,11 @@
-"""主流程编排：抓取 → 写稿 → TTS 合成 → 拼接 → 更新元数据 → 清理 → 生成站点
+"""主流程编排：抓取 → 写稿 → TTS 合成 → 拼接 → 产出音频制品
 
 用法：
-  python -m podcast.main              # 完整流程
+  python -m podcast.main              # 完整流程（音频输出到 data/episodes/）
   python -m podcast.main --no-tts     # 跳过 TTS 与合成（无 MiMo Key 时本地测试用）
-  python -m podcast.main --no-llm     # 跳过 LLM 写稿，用兜底模板
 """
 import json
+import os
 import shutil
 import sys
 from datetime import datetime, timezone
@@ -14,20 +14,17 @@ from pathlib import Path
 import yaml
 
 from podcast.audio import fmt_duration, get_duration_sec, merge_mp3
-from podcast.build_page import build_site
-from podcast.cleanup import cleanup, load_episodes, save_episodes
 from podcast.fetch_news import main as fetch_news
 from podcast.tts import synthesize_segments
 from podcast.write_script import main as write_script
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
-DOCS = ROOT / "docs"
+EPISODES = DATA / "episodes"
 
 
 def main():
     skip_tts = "--no-tts" in sys.argv
-    skip_llm = "--no-llm" in sys.argv
 
     with open(ROOT / "config" / "config.yaml", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
@@ -35,64 +32,49 @@ def main():
 
     # 1. 抓取资讯 + 2. 生成口播稿
     fetch_news()
-    write_script(skip_llm=skip_llm)
+    write_script()
 
     with open(DATA / "script.json", encoding="utf-8") as f:
         script = json.load(f)
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-    # 2.5 保存 Markdown 日报到站点目录
-    rel_report = None
-    report_src = DATA / "report.md"
-    if report_src.exists():
-        rel_report = f"reports/{today}.md"
-        (DOCS / rel_report).parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(report_src, DOCS / rel_report)
-        print(f"[main] 日报已保存：{rel_report}")
-
-    episodes = load_episodes()
-    if any(ep["date"] == today for ep in episodes):
-        print(f"[main] {today} 已有节目，本次运行将覆盖更新")
-
     if skip_tts:
         print("[main] --no-tts 模式：跳过 TTS 与音频合成")
         return
 
     # 3. TTS 合成（需要 MIMO_API_KEY）
-    import os
     api_key = os.environ.get("MIMO_API_KEY", "")
     if not api_key:
         raise RuntimeError("未设置 MIMO_API_KEY 环境变量")
+    tts_cfg = dict(cfg["tts"])
+    tts_cfg.setdefault("voice", podcast_cfg.get("voice", "mimo_default"))
     seg_dir = DATA / "segments"
-    parts = synthesize_segments(script["segments"], cfg["tts"], api_key, seg_dir)
+    parts = synthesize_segments(script["segments"], tts_cfg, api_key, seg_dir)
 
-    # 4. 拼接成完整播客
-    rel_file = f"episodes/{today}.mp3"
-    out_path = DOCS / rel_file
+    # 4. 拼接成完整播客（音频制品）
+    EPISODES.mkdir(parents=True, exist_ok=True)
+    out_path = EPISODES / f"{today}.mp3"
     merge_mp3(parts, out_path, workdir=DATA)
     duration = get_duration_sec(out_path)
-    print(f"[main] 播客合成完成：{rel_file}，时长 {fmt_duration(duration)}")
+    print(f"[main] 播客合成完成：{out_path}，时长 {fmt_duration(duration)}")
 
-    # 5. 更新元数据（同一天重复运行时覆盖）
-    episodes = [ep for ep in episodes if ep["date"] != today]
-    episodes.insert(0, {
+    # 5. 写出本期元数据（随制品一起归档）
+    meta = {
         "date": today,
         "title": script.get("title", "AI 每日资讯"),
-        "file": rel_file,
+        "file": out_path.name,
         "duration_sec": duration,
         "duration_str": fmt_duration(duration),
         "size": out_path.stat().st_size,
         "segments": len(script["segments"]),
-        "report": rel_report,
-    })
-    save_episodes(episodes)
+        "source": "AIHOT",
+        "attribution": "资讯整理自AIhot社区",
+    }
+    with open(DATA / "episode.json", "w", encoding="utf-8") as f:
+        json.dump(meta, f, ensure_ascii=False, indent=2)
 
-    # 6. 清理过期音频 + 7. 生成站点
-    cleanup(podcast_cfg.get("retention_days", 90))
-    build_site(cfg, podcast_cfg)
-
-    # 清理临时分段文件
+    # 6. 清理临时分段文件
     if seg_dir.exists():
         shutil.rmtree(seg_dir, ignore_errors=True)
     print("[main] 全部完成 ✅")

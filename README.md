@@ -1,31 +1,41 @@
 # 🎙️ AI Daily Podcast
 
-每日自动抓取 AI 资讯（中英文混合源）→ LLM 撰写口播稿 → 小米 MiMo TTS 语音合成 → 生成单主播播客，发布到 GitHub Pages。全程由 GitHub Actions 定时驱动，本地无需开机。
+每日自动抓取 [AIHOT](https://aihot.news) 汇聚好的 24 小时 AI 要闻 → LLM 撰写口播稿 → 小米 MiMo TTS 语音合成 → 生成单主播播客音频制品。全程由 GitHub Actions 定时驱动，产物以 Actions artifact 形式产出（不再部署 GitHub Pages），本地无需开机。
 
 ## 工作流程
 
 ```
-RSS 抓取（机器之心/量子位/HN/TechCrunch/The Verge/arXiv/Reddit）
-        │  48h 内条目，各源轮询选 top 12
+AIHOT 公开 API 抓取（唯一数据源，无需 API Key）
+        │  /api/v1/items        24h 精选条目（评分 / 中文摘要 / 入选理由）
+        │  /api/v1/hot-topics   多源聚合热点（同一事件多家报道）
+        │  /api/v1/stories/{id} 事件的跨源聚合 digest（头条素材）
         ▼
-LLM 编辑编排（第一次调用）
-        │  分类到四大栏目：模型厂商 / Agent与应用 / 硬件与行业 / 模型排行
-        │  产出 Markdown 图文日报（摘要 + 重点信息 + 原文链接）
+LLM 选题（1 次调用）
+        │  从素材中挑 8-14 条（数量由模型判断），指定板块与今日头条
+        │  同时给出本期标题与开场白
         ▼
-LLM 撰写口播稿（第二次调用）
-        │  字数按 5-10 分钟预算控制（约 1200-2400 字，240 字/分钟）
+LLM 逐条写稿（N 次调用，并发）
+        │  每条独立成段：2-4 句口语化内容，套用朗读规范（多音字替代字）
+        ▼
+组装：开场 → 今日头条 → 模型与产品 / 行业与资本 / 研究与实践 → 结束语 + 署名（资讯整理自AIhot社区）
         ▼
 MiMo TTS 合成（mimo-v2.5-tts，分段调用 + 限流重试）
         │
         ▼
-ffmpeg 拼接 128kbps MP3 → docs/episodes/YYYY-MM-DD.mp3
-        │  同步生成 docs/reports/YYYY-MM-DD.md 图文日报
-        ▼
-更新 docs/episodes.json → 生成 index.html 播放器 + feed.xml 播客 RSS
+ffmpeg 拼接 128kbps MP3 → data/episodes/YYYY-MM-DD.mp3
         │
         ▼
-commit 回仓库 → 部署 GitHub Pages
+GitHub Actions 上传 artifact（音频 + 口播稿/选题清单，保留 30 天）
 ```
+
+## 板块结构
+
+| 板块 | 内容 |
+|---|---|
+| 今日头条 | 1-2 条多源聚合的重点事件（附跨源摘要） |
+| 模型与产品 | 模型发布、能力更新、AI 产品与 Agent 应用上线 |
+| 行业与资本 | 融资并购、政策监管、公司战略、市场格局、算力硬件 |
+| 研究与实践 | 论文研究、评测基准、实战技巧与方法论 |
 
 ## 首次配置（只需做一次）
 
@@ -41,26 +51,23 @@ commit 回仓库 → 部署 GitHub Pages
 ### 2. 修改 config/config.yaml
 
 - `script_llm.base_url` / `model`：口播稿 LLM，当前为 MiniMax（`https://api.minimax.cn/v1` + `MiniMax-M3.1-Flash`）
+- `aihot.*`：AIHOT 数据源参数（`base_url` / `window`=24h|7d / `limit` / `user_agent`，无需 API Key）
+- `podcast.min_items` / `max_items`：每期条数区间（默认 8-14），实际数量由写稿模型判断
+- `podcast.llm_workers`：逐条写稿的并发数（默认 4）
 - `podcast.voice`：MiMo 预置音色（冰糖/茉莉/苏打/白桦/Mia/Chloe/Milo/Dean）
-- `podcast.duration_min_minutes` / `duration_max_minutes`：口播时长预算（默认 5-10 分钟，语速按 `chars_per_minute` 240 折算字数）
-- `podcast.site_base_url`：Pages 部署成功后改成实际地址（影响 RSS 中音频链接）
-- `podcast.retention_days`：旧音频保留天数（默认 90，防止仓库无限膨胀）
+- `config/pronunciation.yaml`：朗读规范（多音字与英文术语 → 替代写法），写稿提示词与落盘前都会应用
 
-### 3. 启用 GitHub Pages
+### 3. 首次运行
 
-仓库 Settings → Pages → Source 选 **GitHub Actions**。
-
-### 4. 首次运行
-
-Actions 页面选 "Daily AI Podcast" → Run workflow 手动触发。之后每天北京时间 8:00 自动运行（GitHub 定时任务可能延迟 15-30 分钟）。
+Actions 页面选 "Daily AI Podcast" → Run workflow 手动触发。之后每天北京时间 8:00 自动运行（GitHub 定时任务可能延迟 15-30 分钟）。跑完后在本次运行的 Artifacts 区域下载 `ai-daily-podcast-<run_number>`（音频）与 `ai-daily-podcast-script-<run_number>`（口播稿与选题清单）。
 
 ## 本地测试
 
 ```bash
 pip install -r requirements.txt
 
-# 无需任何 Key，只测抓取 + 兜底模板写稿
-python -m podcast.main --no-tts --no-llm
+# 只测抓取（不需要任何 Key）
+python -m podcast.fetch_news
 
 # 完整流程（需要 ffmpeg 在 PATH 中，并设置两个环境变量）
 set MIMO_API_KEY=sk-xxx          # Windows CMD
@@ -70,32 +77,30 @@ python -m podcast.main
 
 ## 注意事项
 
-- **仓库体积**：每日 MP3 直接入库，`retention_days` 清理会自动删除超期音频；如果想无限存历史，可改为存 GitHub Release（单文件上限 2GB）
-- **定时任务休眠**：GitHub 仓库 60 天没有任何活动会自动停用 scheduled workflow；本项目每天都会 commit，因此天然不会触发
-- **Pages 限额**：站点 ≤ 1GB、月流量软限 100GB，按 90 天保留期计算绰绰有余
-- **单文件上限**：git 单文件 100MB；一期 10 分钟播客约 10MB，远低于限制
+- **仓库体积**：音频不入库（`.gitignore` 忽略 `data/`），仓库保持极小；历史音频靠 Actions artifact 保留 30 天
+- **定时任务休眠**：GitHub 仓库 60 天没有任何活动会自动停用 scheduled workflow；本项目每天都会产生一次运行，可偶尔手动触发一次以保活
+- **产物获取**：不部署 Pages，音频只能从 Actions artifact 下载（单文件 100MB 限制不涉及）
 - **TTS 限流**：MiMo 平台 RPM 100，本项目已内置 429 指数退避重试
-- **单源失败容错**：任何一个 RSS 源挂掉不影响当天节目生成；LLM 失败时回退到模板拼接稿
+- **不保留模板兜底**：LLM 写稿失败会直接报错终止（单条失败重试 3 次，仍失败则跳过该条；有效内容不足 3 条直接放弃），由 GitHub Actions 的重试步骤兜住
+- **数据来源与署名**：唯一数据源为 [AIHOT](https://aihot.news)（免费公开只读 API，无需 Key）。按其使用条款，口播结尾固定署名「资讯整理自AIhot社区」；对外商用/再分发需先取得授权
 
 ## 目录结构
 
 ```
-├── .github/workflows/daily-podcast.yml   # 定时任务 + Pages 部署
+├── .github/workflows/daily-podcast.yml   # 定时任务 + 音频制品上传
 ├── config/
 │   ├── config.yaml                       # 播客/LLM/TTS 配置
-│   └── sources.yaml                      # 资讯源列表
+│   └── pronunciation.yaml                # 朗读规范（多音字 → 替代写法）
 ├── podcast/
-│   ├── fetch_news.py                     # RSS 抓取与筛选
-│   ├── write_script.py                   # LLM 口播稿生成（含兜底模板）
+│   ├── fetch_news.py                     # 抓取入口（调用 AIHOT）
+│   ├── fetch_aihot.py                    # AIHOT 公开 API 客户端与素材组装
+│   ├── write_script.py                   # 选题 + 逐条写稿 + 组装
 │   ├── tts.py                            # MiMo TTS 客户端
 │   ├── audio.py                          # ffmpeg 拼接/时长
-│   ├── cleanup.py                        # 保留期清理
-│   ├── build_page.py                     # Pages 站点生成
 │   └── main.py                           # 主流程编排
-└── docs/                                 # GitHub Pages 站点（自动更新）
-    ├── index.html                        # 播放器页面
-    ├── feed.xml                          # 播客 RSS
-    ├── episodes.json                     # 节目元数据
-    ├── episodes/                         # 每日 MP3
-    └── reports/                          # 每日图文日报（Markdown）
+└── data/                                 # 中间产物（不入库）
+    ├── news.json                         # AIHOT 素材
+    ├── script.json                       # 口播稿分段
+    ├── picks.json                        # 本期选题清单
+    └── episodes/YYYY-MM-DD.mp3           # 音频制品
 ```
