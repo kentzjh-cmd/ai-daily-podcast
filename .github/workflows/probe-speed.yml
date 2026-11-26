@@ -15,37 +15,33 @@ jobs:
           sudo apt-get update -q && sudo apt-get install -y -q ffmpeg
           pip install -q requests
           python3 - <<'EOF'
-          import os, json, requests, subprocess, tempfile
+          import os, json, base64, requests, subprocess, tempfile
           url = "https://api.xiaomimimo.com/v1/chat/completions"
           headers = {"api-key": os.environ["MIMO_API_KEY"], "Content-Type": "application/json"}
           text = "大家好，欢迎收听今天的 AI 每日资讯。今天我们聊三件事：模型更新、行业动态，还有研究进展。"
+          def dur_of(path):
+              r = subprocess.run(["ffprobe","-v","error","-show_entries","format=duration","-of","default=nw=1:nk=1",path],
+                                 capture_output=True, text=True).stdout.strip()
+              return float(r) if r else 0.0
           variants = {
-            "baseline": {"format": "mp3", "voice": "苏打"},
-            "speed_1.2": {"format": "mp3", "voice": "苏打", "speed": 1.2},
-            "speed_1.4": {"format": "mp3", "voice": "苏打", "speed": 1.4},
-            "speech_rate_1.2": {"format": "mp3", "voice": "苏打", "speech_rate": 1.2},
-            "speech_rate_+20%": {"format": "mp3", "voice": "苏打", "speech_rate": "+20%"},
+              "baseline": {"format": "mp3", "voice": "苏打"},
+              "rate_1.2": {"format": "mp3", "voice": "苏打", "speech_rate": 1.2},
+              "rate_1.5": {"format": "mp3", "voice": "苏打", "speech_rate": 1.5},
+              "rate_2.0": {"format": "mp3", "voice": "苏打", "speech_rate": 2.0},
           }
           for name, audio in variants.items():
-              body = {"model": "mimo-v2.5-tts",
-                      "messages": [{"role": "assistant", "content": text}],
-                      "audio": audio}
-              try:
-                  r = requests.post(url, headers=headers, json=body, timeout=120)
-                  if r.status_code != 200:
-                      print(f"VAR {name}: HTTP {r.status_code} {r.text[:200]}")
-                      continue
-                  data = r.json()
-                  import base64
-                  b = base64.b64decode(data["choices"][0]["message"]["audio"]["data"])
-                  with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
-                      f.write(b); path = f.name
-                  dur = subprocess.run(["ffprobe","-v","error","-show_entries","format=duration","-of","default=nw=1:nk=1",path],
-                                       capture_output=True, text=True).stdout.strip()
-                  if not dur:
-                      dur = f"~{len(b)/16000:.2f}s(by-size)"
-                  extra = {k: v for k, v in data["choices"][0]["message"].items() if k != "audio"}
-                  print(f"VAR {name}: OK bytes={len(b)} duration={dur} extra={json.dumps(extra, ensure_ascii=False)[:200]}")
-              except Exception as e:
-                  print(f"VAR {name}: ERROR {e}")
+              body = {"model": "mimo-v2.5-tts", "messages": [{"role": "assistant", "content": text}], "audio": audio}
+              r = requests.post(url, headers=headers, json=body, timeout=120)
+              if r.status_code != 200:
+                  print(f"VAR {name}: HTTP {r.status_code} {r.text[:160]}"); continue
+              b = base64.b64decode(r.json()["choices"][0]["message"]["audio"]["data"])
+              raw = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False).name
+              open(raw, "wb").write(b)
+              trimmed = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False).name
+              subprocess.run(["ffmpeg","-y","-i",raw,"-af",
+                              "silenceremove=start_periods=1:start_duration=0.05:start_threshold=-45dB:stop_periods=1:stop_duration=0.05:stop_threshold=-45dB",
+                              trimmed], capture_output=True)
+              d_raw, d_trim = dur_of(raw), dur_of(trimmed)
+              print(f"VAR {name}: raw={d_raw:.2f}s trimmed={d_trim:.2f}s padding={d_raw-d_trim:.2f}s "
+                    f"chars={len(text)} speed={len(text)/max(d_trim,0.01):.0f}字/分")
           EOF
